@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>الكون المتحرك — كواكب دوارة</title>
+  <style>
+    :root{--bg:#05070a;--panel:rgba(255,255,255,0.06);--accent:#8be9fd}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Arial;direction:rtl;overflow:hidden}
+    canvas{display:block;width:100%;height:100%;
+      background:radial-gradient(ellipse at 20% 10%, rgba(139,233,253,0.04) 0%, transparent 20%),
+                 linear-gradient(180deg,#02040a 0%, var(--bg) 60%);
+    }
+    .ui {
+      position:fixed;left:16px;top:16px;padding:10px;border-radius:12px;
+      background:var(--panel);backdrop-filter:blur(6px);
+      color:#fff;z-index:20;min-width:220px
+    }
+    .ui h1{font-size:16px;margin:0 0 8px}
+    .row{display:flex;gap:8px;align-items:center;margin:6px 0}
+    label{font-size:13px;opacity:0.9}
+    input[type=range]{width:120px}
+    button{background:transparent;border:1px solid rgba(255,255,255,0.12);
+      padding:6px 8px;border-radius:8px;color:#fff;cursor:pointer}
+    .hint{position:fixed;right:16px;bottom:16px;background:var(--panel);
+      padding:8px 10px;border-radius:10px;color:#fff;font-size:13px}
+    /* ✨ النص السفلي بلمعة ذهبية متكررة */
+    .credits{
+      position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
+      font-size:13px;font-weight:600;
+      background:linear-gradient(90deg,#ffd36b 0%,#fff5cc 40%,#ffd36b 80%);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+      animation:shine 3s linear infinite;
+      letter-spacing:0.5px;
+    }
+    @keyframes shine{
+      0%{background-position:-100px;}
+      100%{background-position:200px;}
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="ui" id="ui">
+    <h1>الكون المتحرك</h1>
+    <div class="row"><label>السرعة</label><input id="speed" type="range" min="-3" max="3" step="0.01" value="0.6"></div>
+    <div class="row"><label>تكبير</label><input id="zoom" type="range" min="0.4" max="2" step="0.01" value="1"></div>
+    <div class="row"><button id="pause">إيقاف</button><button id="toggleTrails">تفعيل الآثار</button></div>
+    <div class="row"><label>مسح الكل</label><button id="reset">إعادة</button></div>
+  </div>
+  <div class="hint">انقر/اسحب لتغيير السرعة — عجلة الفأرة للتكبير. للجوال: اسحب لتدوير، بمشبك للتكبير.</div>
+  <div class="credits">صُنع بواسطة ENG | MOHAMED ALI</div>
+
+  <!-- 🔊 صوت الطاقة الشمسية -->
+  <audio id="spaceAudio" loop autoplay>
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_2a7cbd0132.mp3?filename=deep-space-ambient-110003.mp3" type="audio/mpeg">
+  </audio>
+
+  <script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  let DPR = Math.max(1, window.devicePixelRatio || 1);
+
+  function resize(){
+    DPR = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(innerWidth * DPR);
+    canvas.height = Math.floor(innerHeight * DPR);
+    canvas.style.width = innerWidth + 'px';
+    canvas.style.height = innerHeight + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  const sun = { x: () => canvas.width/(2*DPR), y: () => canvas.height/(2*DPR), radius: 28 };
+  let time = 0;
+  let speed = parseFloat(document.getElementById('speed').value) || 0.6;
+  let zoom = parseFloat(document.getElementById('zoom').value) || 1;
+  let paused = false;
+  let trails = false;
+
+  const planets = [
+    { name:'ميركوري', color:'#c9c9c9', r:70, size:6, o:2.3 },
+    { name:'الزهرة', color:'#ffcc88', r:110, size:10, o:1.4 },
+    { name:'الأرض', color:'#6fb3ff', r:160, size:12, o:1 },
+    { name:'المريخ', color:'#ff7b59', r:210, size:9, o:0.8 },
+    { name:'المشتري', color:'#e6b87b', r:290, size:20, o:0.4 },
+    { name:'زحل', color:'#f3e0b5', r:360, size:18, o:0.32 },
+  ];
+
+  const stars = Array.from({length:150},()=>({
+    x: Math.random()*innerWidth, y: Math.random()*innerHeight, s: Math.random()*1.8
+  }));
+
+  document.getElementById('speed').addEventListener('input', e=> speed = parseFloat(e.target.value));
+  document.getElementById('zoom').addEventListener('input', e=> zoom = parseFloat(e.target.value));
+  document.getElementById('pause').addEventListener('click', ()=>{
+    paused = !paused;
+    document.getElementById('pause').textContent = paused ? 'تشغيل' : 'إيقاف';
+  });
+  document.getElementById('toggleTrails').addEventListener('click', ()=>{
+    trails = !trails;
+    document.getElementById('toggleTrails').textContent = trails ? 'إيقاف الآثار' : 'تفعيل الآثار';
+  });
+  document.getElementById('reset').addEventListener('click', ()=>{
+    time = 0; speed = 0.6; zoom = 1;
+    document.getElementById('speed').value = speed;
+    document.getElementById('zoom').value = zoom;
+  });
+
+  let isDragging = false, lastX = 0;
+  canvas.addEventListener('pointerdown', e=>{isDragging = true; lastX = e.clientX; canvas.setPointerCapture(e.pointerId);});
+  canvas.addEventListener('pointermove', e=>{
+    if(!isDragging) return;
+    const dx = e.clientX - lastX; lastX = e.clientX;
+    speed += dx*0.008;
+    document.getElementById('speed').value = speed.toFixed(2);
+  });
+  canvas.addEventListener('pointerup', e=>{isDragging=false; try{canvas.releasePointerCapture(e.pointerId);}catch{}});
+  canvas.addEventListener('wheel', e=>{
+    e.preventDefault();
+    zoom += -e.deltaY*0.001;
+    zoom = Math.min(2, Math.max(0.4, zoom));
+    document.getElementById('zoom').value = zoom.toFixed(2);
+  }, {passive:false});
+
+  function drawStars(){
+    for(const s of stars){
+      ctx.globalAlpha = 0.9; ctx.fillStyle = 'white';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.s, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  function render(){
+    const w = canvas.width/DPR, h = canvas.height/DPR;
+    ctx.fillStyle = trails ? 'rgba(5,7,10,0.12)' : 'rgba(5,7,10,1)';
+    ctx.fillRect(0,0,w,h);
+    if(!trails) drawStars();
+
+    ctx.save();
+    ctx.translate(w/2,h/2);
+    ctx.scale(zoom,zoom);
+
+    const g = ctx.createRadialGradient(0,0,sun.radius*0.2,0,0,sun.radius*3);
+    g.addColorStop(0,'rgba(255,220,100,0.95)');
+    g.addColorStop(0.35,'rgba(255,140,60,0.25)');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.beginPath(); ctx.fillStyle=g; ctx.arc(0,0,sun.radius*3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.fillStyle='#ffd36b'; ctx.arc(0,0,sun.radius,0,Math.PI*2); ctx.fill();
+
+    ctx.lineWidth = 1;
+    for(const p of planets){
+      ctx.beginPath(); ctx.strokeStyle='rgba(255,255,255,0.05)';
+      ctx.arc(0,0,p.r,0,Math.PI*2); ctx.stroke();
+
+      const ang = time*p.o;
+      const x = Math.cos(ang)*p.r;
+      const y = Math.sin(ang)*p.r*0.6;
+
+      ctx.beginPath(); ctx.fillStyle='rgba(0,0,0,0.18)';
+      ctx.ellipse(x+6,y+6,p.size*0.9,p.size*0.5,0,0,Math.PI*2); ctx.fill();
+
+      ctx.beginPath(); ctx.fillStyle=p.color;
+      ctx.arc(x,y,p.size,0,Math.PI*2); ctx.fill();
+
+      if(p.name==='زحل'){
+        ctx.beginPath();
+        ctx.ellipse(x,y,p.size*1.9,p.size*0.6,Math.PI/4,0,Math.PI*2);
+        ctx.strokeStyle='rgba(200,180,120,0.6)'; ctx.lineWidth=2; ctx.stroke();
+      }
+
+      ctx.font='12px sans-serif';
+      ctx.fillStyle='rgba(255,255,255,0.65)';
+      ctx.fillText(p.name, x+p.size+6, y+4);
+    }
+
+    ctx.restore();
+  }
+
+  let last = performance.now();
+  function loop(now){
+    const dt = (now-last)/1000; last=now;
+    if(!paused) time += dt*speed*0.9;
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+})();
+  </script>
+</body>
+</html>
